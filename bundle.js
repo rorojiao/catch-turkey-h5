@@ -13,13 +13,24 @@
     return _mainCanvas;
   }
 
+  // Convert client coordinates to canvas-relative coordinates
+  function toCanvasCoords(clientX, clientY) {
+    var c = getCanvas();
+    var rect = c.getBoundingClientRect();
+    return {
+      clientX: clientX - rect.left,
+      clientY: clientY - rect.top
+    };
+  }
+
   function resizeCanvas() {
     var c = getCanvas();
     var dpr = window.devicePixelRatio || 1;
-    // Use canvas element's CSS size (respects aspect-ratio constraints on PC)
     var rect = c.getBoundingClientRect();
-    c.width = rect.width * dpr;
-    c.height = rect.height * dpr;
+    var w = rect.width || window.innerWidth;
+    var h = rect.height || window.innerHeight;
+    c.width = w * dpr;
+    c.height = h * dpr;
   }
 
   window.wx = {
@@ -39,8 +50,8 @@
       var c = getCanvas();
       var rect = c.getBoundingClientRect();
       return {
-        windowWidth: rect.width,
-        windowHeight: rect.height,
+        windowWidth: rect.width || window.innerWidth,
+        windowHeight: rect.height || window.innerHeight,
         pixelRatio: window.devicePixelRatio || 1,
       };
     },
@@ -49,10 +60,11 @@
       _touchStartCbs.push(cb);
       document.addEventListener('touchstart', function(e) {
         e.preventDefault();
-        cb({ touches: Array.from(e.touches).map(function(t) { return { clientX: t.clientX, clientY: t.clientY }; }) });
+        cb({ touches: Array.from(e.touches).map(function(t) { return toCanvasCoords(t.clientX, t.clientY); }) });
       }, { passive: false });
       document.addEventListener('mousedown', function(e) {
-        cb({ touches: [{ clientX: e.clientX, clientY: e.clientY }] });
+        var p = toCanvasCoords(e.clientX, e.clientY);
+        cb({ touches: [p] });
       });
     },
 
@@ -60,11 +72,12 @@
       _touchMoveCbs.push(cb);
       document.addEventListener('touchmove', function(e) {
         e.preventDefault();
-        cb({ touches: Array.from(e.touches).map(function(t) { return { clientX: t.clientX, clientY: t.clientY }; }) });
+        cb({ touches: Array.from(e.touches).map(function(t) { return toCanvasCoords(t.clientX, t.clientY); }) });
       }, { passive: false });
       document.addEventListener('mousemove', function(e) {
         if (e.buttons > 0) {
-          cb({ touches: [{ clientX: e.clientX, clientY: e.clientY }] });
+          var p = toCanvasCoords(e.clientX, e.clientY);
+          cb({ touches: [p] });
         }
       });
     },
@@ -73,10 +86,11 @@
       _touchEndCbs.push(cb);
       document.addEventListener('touchend', function(e) {
         e.preventDefault();
-        cb({ changedTouches: Array.from(e.changedTouches).map(function(t) { return { clientX: t.clientX, clientY: t.clientY }; }) });
+        cb({ changedTouches: Array.from(e.changedTouches).map(function(t) { return toCanvasCoords(t.clientX, t.clientY); }) });
       }, { passive: false });
       document.addEventListener('mouseup', function(e) {
-        cb({ changedTouches: [{ clientX: e.clientX, clientY: e.clientY }] });
+        var p = toCanvasCoords(e.clientX, e.clientY);
+        cb({ changedTouches: [p] });
       });
     },
 
