@@ -16,8 +16,10 @@
   function resizeCanvas() {
     var c = getCanvas();
     var dpr = window.devicePixelRatio || 1;
-    c.width = window.innerWidth * dpr;
-    c.height = window.innerHeight * dpr;
+    // Use canvas element's CSS size (respects aspect-ratio constraints on PC)
+    var rect = c.getBoundingClientRect();
+    c.width = rect.width * dpr;
+    c.height = rect.height * dpr;
   }
 
   window.wx = {
@@ -34,9 +36,11 @@
     },
 
     getSystemInfoSync: function() {
+      var c = getCanvas();
+      var rect = c.getBoundingClientRect();
       return {
-        windowWidth: window.innerWidth,
-        windowHeight: window.innerHeight,
+        windowWidth: rect.width,
+        windowHeight: rect.height,
         pixelRatio: window.devicePixelRatio || 1,
       };
     },
@@ -1075,8 +1079,8 @@ const TURKEY_IMG_MAP = [
   'images/turkey_pink.png',    // 5 粉色
   'images/turkey_green.png',   // 6 绿色
   'images/turkey_rainbow.png', // 7 彩虹
-  'images/turkey_red.png',     // 8 白色（无专用图，用红色代替）
-  'images/turkey_red.png',     // 9 棕色（无专用图，用红色代替）
+  'images/turkey_white.png',   // 8 白色
+  'images/turkey_black.png',   // 9 棕色/黑色
 ];
 
 // ========== 游戏常量 ==========
