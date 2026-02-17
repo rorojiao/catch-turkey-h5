@@ -13,24 +13,11 @@
     return _mainCanvas;
   }
 
-  // Convert client coordinates to canvas-relative coordinates
-  function toCanvasCoords(clientX, clientY) {
-    var c = getCanvas();
-    var rect = c.getBoundingClientRect();
-    return {
-      clientX: clientX - rect.left,
-      clientY: clientY - rect.top
-    };
-  }
-
   function resizeCanvas() {
     var c = getCanvas();
     var dpr = window.devicePixelRatio || 1;
-    var rect = c.getBoundingClientRect();
-    var w = rect.width || window.innerWidth;
-    var h = rect.height || window.innerHeight;
-    c.width = w * dpr;
-    c.height = h * dpr;
+    c.width = window.innerWidth * dpr;
+    c.height = window.innerHeight * dpr;
   }
 
   window.wx = {
@@ -47,11 +34,9 @@
     },
 
     getSystemInfoSync: function() {
-      var c = getCanvas();
-      var rect = c.getBoundingClientRect();
       return {
-        windowWidth: rect.width || window.innerWidth,
-        windowHeight: rect.height || window.innerHeight,
+        windowWidth: window.innerWidth,
+        windowHeight: window.innerHeight,
         pixelRatio: window.devicePixelRatio || 1,
       };
     },
@@ -60,11 +45,10 @@
       _touchStartCbs.push(cb);
       document.addEventListener('touchstart', function(e) {
         e.preventDefault();
-        cb({ touches: Array.from(e.touches).map(function(t) { return toCanvasCoords(t.clientX, t.clientY); }) });
+        cb({ touches: Array.from(e.touches).map(function(t) { return { clientX: t.clientX, clientY: t.clientY }; }) });
       }, { passive: false });
       document.addEventListener('mousedown', function(e) {
-        var p = toCanvasCoords(e.clientX, e.clientY);
-        cb({ touches: [p] });
+        cb({ touches: [{ clientX: e.clientX, clientY: e.clientY }] });
       });
     },
 
@@ -72,12 +56,11 @@
       _touchMoveCbs.push(cb);
       document.addEventListener('touchmove', function(e) {
         e.preventDefault();
-        cb({ touches: Array.from(e.touches).map(function(t) { return toCanvasCoords(t.clientX, t.clientY); }) });
+        cb({ touches: Array.from(e.touches).map(function(t) { return { clientX: t.clientX, clientY: t.clientY }; }) });
       }, { passive: false });
       document.addEventListener('mousemove', function(e) {
         if (e.buttons > 0) {
-          var p = toCanvasCoords(e.clientX, e.clientY);
-          cb({ touches: [p] });
+          cb({ touches: [{ clientX: e.clientX, clientY: e.clientY }] });
         }
       });
     },
@@ -86,11 +69,10 @@
       _touchEndCbs.push(cb);
       document.addEventListener('touchend', function(e) {
         e.preventDefault();
-        cb({ changedTouches: Array.from(e.changedTouches).map(function(t) { return toCanvasCoords(t.clientX, t.clientY); }) });
+        cb({ changedTouches: Array.from(e.changedTouches).map(function(t) { return { clientX: t.clientX, clientY: t.clientY }; }) });
       }, { passive: false });
       document.addEventListener('mouseup', function(e) {
-        var p = toCanvasCoords(e.clientX, e.clientY);
-        cb({ changedTouches: [p] });
+        cb({ changedTouches: [{ clientX: e.clientX, clientY: e.clientY }] });
       });
     },
 
@@ -2752,4 +2734,11 @@ if (total === 0) onAllLoaded();
 });
 
 // ===== Boot =====
-require('game');
+try { require('game'); } catch(e) {
+  var c = document.getElementById('gameCanvas');
+  var g = c.getContext('2d');
+  g.fillStyle = '#F00'; g.font = '16px monospace';
+  g.fillText('ERROR: ' + e.message, 10, 30);
+  g.fillText(e.stack ? e.stack.split('\n')[1] : '', 10, 55);
+  console.error(e);
+}
