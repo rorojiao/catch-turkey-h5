@@ -9,13 +9,21 @@
   }
 
   function getBestSize() {
-    // Use innerWidth/innerHeight as primary (respects viewport, excludes browser chrome)
-    // Fall back to visualViewport, clientWidth, screen in that order
-    var w = window.innerWidth || 0;
-    var h = window.innerHeight || 0;
-    if (w < 10 && window.visualViewport) { w = window.visualViewport.width || 0; h = window.visualViewport.height || 0; }
-    if (w < 10) { w = document.documentElement.clientWidth || 0; h = document.documentElement.clientHeight || 0; }
-    if (w < 10 && document.body) { w = document.body.clientWidth || 0; h = document.body.clientHeight || 0; }
+    var candidates = [
+      [window.innerWidth || 0, window.innerHeight || 0],
+      [document.documentElement.clientWidth || 0, document.documentElement.clientHeight || 0],
+    ];
+    if (window.visualViewport) {
+      candidates.push([window.visualViewport.width || 0, window.visualViewport.height || 0]);
+    }
+    if (document.body) {
+      candidates.push([document.body.clientWidth || 0, document.body.clientHeight || 0]);
+    }
+    var w = 0, h = 0;
+    for (var i = 0; i < candidates.length; i++) {
+      if (candidates[i][0] > w) w = candidates[i][0];
+      if (candidates[i][1] > h) h = candidates[i][1];
+    }
     if (w < 200) w = screen.width || 375;
     if (h < 200) h = screen.height || 667;
     return { w: Math.floor(w), h: Math.floor(h) };
