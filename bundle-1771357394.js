@@ -494,9 +494,13 @@ const PARTICLE_TYPES = {
   confetti: { ch: '🎊', sz: 14, life: 70, g: 0.08 },
   heart:    { ch: '❤️', sz: 14, life: 50, g: -0.02 },
   sparkle:  { ch: '⭐', sz: 12, life: 40, g: 0 },
+  fire:     { ch: '🔥', sz: 18, life: 45, g: -0.06 },
+  boom:     { ch: '💥', sz: 22, life: 30, g: 0 },
+  lightning:{ ch: '⚡', sz: 16, life: 35, g: -0.03 },
+  ring:     { ch: '💫', sz: 20, life: 40, g: 0 },
 };
 
-const POOL_SIZE = 200;
+const POOL_SIZE = 400;
 const pool = [];
 const active = [];
 
@@ -506,6 +510,62 @@ for (let i = 0; i < POOL_SIZE; i++) {
     life: 0, ml: 0, ch: '', sz: 16, g: 0, a: 0, va: 0,
   });
 }
+
+// ===== 屏幕特效 =====
+let _screenShake = 0;
+let _screenFlash = 0;
+let _shockwaves = [];
+
+const ScreenFX = {
+  shake(intensity = 8) { _screenShake = Math.max(_screenShake, intensity); },
+  flash(alpha = 0.6) { _screenFlash = Math.max(_screenFlash, alpha); },
+  shockwave(x, y) { _shockwaves.push({ x, y, r: 0, maxR: 150, alpha: 0.8 }); },
+  
+  update(ctx, w, h) {
+    // Shake
+    if (_screenShake > 0.5) {
+      const dx = (Math.random() - 0.5) * _screenShake * 2;
+      const dy = (Math.random() - 0.5) * _screenShake * 2;
+      ctx.translate(dx, dy);
+      _screenShake *= 0.85;
+    } else { _screenShake = 0; }
+    
+    // Flash
+    if (_screenFlash > 0.01) {
+      ctx.save();
+      ctx.globalAlpha = _screenFlash;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, w, h);
+      ctx.restore();
+      _screenFlash *= 0.8;
+    }
+    
+    // Shockwaves
+    for (let i = _shockwaves.length - 1; i >= 0; i--) {
+      const sw = _shockwaves[i];
+      sw.r += 8;
+      sw.alpha *= 0.92;
+      if (sw.alpha < 0.02 || sw.r > sw.maxR) {
+        _shockwaves.splice(i, 1);
+        continue;
+      }
+      ctx.save();
+      ctx.globalAlpha = sw.alpha;
+      ctx.strokeStyle = '#FFD700';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(sw.x, sw.y, sw.r, 0, Math.PI * 2);
+      ctx.stroke();
+      // Inner ring
+      ctx.strokeStyle = '#FF6B35';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(sw.x, sw.y, sw.r * 0.7, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+};
 
 const Particles = {
   emit(x, y, type, n = 5) {
@@ -1488,22 +1548,57 @@ class GameScene extends Scene {
             this._showCombo(combo);
           }
 
-          // 粒子爆发
+          // 🔥 超强消除特效！
           const w = Renderer.width;
           const slotTotalW = SLOT_COUNT * (SLOT_W + SLOT_GAP) - SLOT_GAP;
           const slotStartX = (w - slotTotalW) / 2;
           const cx = slotStartX + (i + 1) * (SLOT_W + SLOT_GAP);
           const cy = _slotBarY + SLOT_BAR_H / 2;
-          Particles.burst(cx, cy, 9);
-          Particles.emit(cx, cy, 'feather', 3);
+          
+          // 大量粒子爆炸
+          Particles.burst(cx, cy, 18);
+          Particles.emit(cx, cy, 'fire', 6);
+          Particles.emit(cx, cy, 'boom', 2);
+          Particles.emit(cx, cy, 'lightning', 4);
+          Particles.emit(cx, cy, 'ring', 3);
+          Particles.emit(cx, cy, 'sparkle', 5);
+          
+          // 屏幕震动 + 闪光 + 冲击波
+          if (typeof ScreenFX !== 'undefined') {
+            ScreenFX.shake(combo > 2 ? 12 : 8);
+            ScreenFX.flash(combo > 2 ? 0.5 : 0.3);
+            ScreenFX.shockwave(cx, cy);
+          }
+          
+          // 连击时追加扩散粒子
+          if (combo > 1) {
+            for (let ci = 0; ci < combo * 2; ci++) {
+              const rx = cx + (Math.random() - 0.5) * 100;
+              const ry = cy + (Math.random() - 0.5) * 60;
+              Particles.emit(rx, ry, 'star', 1);
+              Particles.emit(rx, ry, 'confetti', 1);
+            }
+          }
 
-          // 分数飘字
+          // 分数飘字（大号+多方向散射）
           const pts = 100 + (combo > 1 ? combo * 20 : 0);
           scoreFloats.push({
             x: cx, y: cy - 20,
-            text: '+' + pts,
-            alpha: 1, vy: -60,
+            text: '+' + pts + (combo > 2 ? ' 🔥' : combo > 1 ? ' ✨' : ''),
+            alpha: 1, vy: -80,
+            scale: combo > 2 ? 1.5 : 1,
           });
+          // 额外散射飘字
+          if (combo > 1) {
+            for (let si = 0; si < Math.min(combo, 5); si++) {
+              scoreFloats.push({
+                x: cx + (Math.random() - 0.5) * 80,
+                y: cy - 10 - Math.random() * 30,
+                text: ['🎉','🌟','💥','✨','🎊'][si % 5],
+                alpha: 1, vy: -40 - Math.random() * 40,
+              });
+            }
+          }
 
           // 震动
           if (Save.d.settings.vibrate) {
@@ -1718,6 +1813,10 @@ class GameScene extends Scene {
 
   // ========== 渲染 ==========
   render(ctx, w, h) {
+    // 屏幕震动
+    ctx.save();
+    if (typeof ScreenFX !== 'undefined') ScreenFX.update(ctx, w, h);
+    
     // 背景
     this._drawBackground(ctx, w, h);
 
@@ -1797,6 +1896,9 @@ class GameScene extends Scene {
       ctx.font = '18px sans-serif';
       ctx.fillText('点击任意位置继续', w / 2, h / 2 + 20);
     }
+    
+    // 关闭屏幕震动的ctx.save
+    ctx.restore();
   }
 
   // ---- 背景绘制 ----
