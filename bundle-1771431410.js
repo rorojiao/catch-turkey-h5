@@ -9,20 +9,13 @@
   }
 
   function getBestSize() {
-    var candidates = [
-      [window.innerWidth || 0, window.innerHeight || 0],
-      [document.documentElement.clientWidth || 0, document.documentElement.clientHeight || 0],
-    ];
-    if (window.visualViewport) {
-      candidates.push([window.visualViewport.width || 0, window.visualViewport.height || 0]);
-    }
-    if (document.body) {
-      candidates.push([document.body.clientWidth || 0, document.body.clientHeight || 0]);
-    }
-    var w = 0, h = 0;
-    for (var i = 0; i < candidates.length; i++) {
-      if (candidates[i][0] > w) w = candidates[i][0];
-      if (candidates[i][1] > h) h = candidates[i][1];
+    // !! 不能用 body.clientHeight !! body 被 canvas 撑大会形成循环
+    // 只用纯 viewport 相关尺寸
+    var w = window.innerWidth || document.documentElement.clientWidth || 0;
+    var h = window.innerHeight || document.documentElement.clientHeight || 0;
+    if (window.visualViewport && window.visualViewport.width > 10) {
+      w = Math.max(w, Math.floor(window.visualViewport.width));
+      h = Math.max(h, Math.floor(window.visualViewport.height));
     }
     if (w < 200) w = screen.width || 375;
     if (h < 200) h = screen.height || 667;
