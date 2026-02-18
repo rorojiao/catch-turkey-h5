@@ -440,35 +440,168 @@ module.exports = Save;
 // ===== js/sound.js =====
 _define('js/sound', function(module, exports, require) {
 /**
- * 抓火鸡 — 音效模块（微信小游戏适配）
+ * 抓火鸡 — 音效模块（Web Audio API 合成）
  */
-
 const Save = require('./save');
 
-function _playTone() {
-  // 微信小游戏不支持 Web Audio API 的 OscillatorNode
-  // TODO: 替换为预录制的音效文件播放
+let _ctx = null;
+function getCtx() {
+  if (!_ctx) {
+    try { _ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
+  }
+  return _ctx;
+}
+
+// 合成音效：频率序列 + 波形 + 增益包络
+function playTones(notes, wave, gain, dur) {
+  const ctx = getCtx(); if (!ctx) return;
+  const now = ctx.currentTime;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(gain, now);
+  g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+  g.connect(ctx.destination);
+  notes.forEach((n, i) => {
+    const o = ctx.createOscillator();
+    o.type = wave;
+    o.frequency.setValueAtTime(n.f, now + (n.t || 0));
+    if (n.f2) o.frequency.exponentialRampToValueAtTime(n.f2, now + (n.t || 0) + (n.d || dur));
+    o.connect(g);
+    o.start(now + (n.t || 0));
+    o.stop(now + (n.t || 0) + (n.d || dur));
+  });
+}
+
+// 噪声爆炸
+function playNoise(dur, gain) {
+  const ctx = getCtx(); if (!ctx) return;
+  const now = ctx.currentTime;
+  const bufSize = ctx.sampleRate * dur;
+  const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1);
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(gain, now);
+  g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+  // 低通滤波让爆炸更有力
+  const flt = ctx.createBiquadFilter();
+  flt.type = 'lowpass';
+  flt.frequency.setValueAtTime(2000, now);
+  flt.frequency.exponentialRampToValueAtTime(200, now + dur);
+  src.connect(flt); flt.connect(g); g.connect(ctx.destination);
+  src.start(now); src.stop(now + dur);
+}
+
+// 火鸡贱贱的尖叫！
+function turkeyScream() {
+  const ctx = getCtx(); if (!ctx) return;
+  const now = ctx.currentTime;
+  // 高频下滑尖叫
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.25, now);
+  g.gain.setValueAtTime(0.3, now + 0.05);
+  g.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+  g.connect(ctx.destination);
+  // 主音：高频锯齿波快速下滑 (像鸡叫)
+  const o1 = ctx.createOscillator();
+  o1.type = 'sawtooth';
+  o1.frequency.setValueAtTime(1800, now);
+  o1.frequency.exponentialRampToValueAtTime(600, now + 0.08);
+  o1.frequency.setValueAtTime(2200, now + 0.1);
+  o1.frequency.exponentialRampToValueAtTime(400, now + 0.3);
+  o1.connect(g); o1.start(now); o1.stop(now + 0.35);
+  // 泛音
+  const o2 = ctx.createOscillator();
+  o2.type = 'square';
+  o2.frequency.setValueAtTime(2400, now);
+  o2.frequency.exponentialRampToValueAtTime(800, now + 0.15);
+  o2.frequency.setValueAtTime(2800, now + 0.15);
+  o2.frequency.exponentialRampToValueAtTime(500, now + 0.3);
+  const g2 = ctx.createGain();
+  g2.gain.setValueAtTime(0.08, now);
+  g2.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+  o2.connect(g2); g2.connect(ctx.destination);
+  o2.start(now); o2.stop(now + 0.35);
 }
 
 const Snd = {
   bgmAudio: null,
 
-  click() { if (!Save.d.settings.sfx) return; _playTone(); },
-  pickup(typeId) { if (!Save.d.settings.sfx) return; _playTone(); },
-  drop() { if (!Save.d.settings.sfx) return; _playTone(); },
-  match() { if (!Save.d.settings.sfx) return; _playTone(); },
-  combo(n) { if (!Save.d.settings.sfx) return; _playTone(); },
-  prop() { if (!Save.d.settings.sfx) return; _playTone(); },
-  win() { if (!Save.d.settings.sfx) return; _playTone(); },
-  lose() { if (!Save.d.settings.sfx) return; _playTone(); },
-  tick() { if (!Save.d.settings.sfx) return; _playTone(); },
+  click() {
+    if (!Save.d.settings.sfx) return;
+    playTones([{f:800, f2:600}], 'sine', 0.15, 0.08);
+  },
+  pickup(typeId) {
+    if (!Save.d.settings.sfx) return;
+    // 清脆的拾取音 + 轻微火鸡叫
+    playTones([{f:500+typeId*80, f2:800+typeId*80}], 'sine', 0.2, 0.12);
+    // 小声的"咕"
+    const ctx = getCtx(); if (!ctx) return;
+    const now = ctx.currentTime;
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(600, now + 0.05);
+    o.frequency.exponentialRampToValueAtTime(300, now + 0.12);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.06, now + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(now + 0.05); o.stop(now + 0.15);
+  },
+  drop() {
+    if (!Save.d.settings.sfx) return;
+    playTones([{f:400, f2:200}], 'sine', 0.15, 0.1);
+  },
+  match() {
+    if (!Save.d.settings.sfx) return;
+    // 消除：火鸡尖叫 + 爆炸！
+    turkeyScream();
+    setTimeout(() => playNoise(0.3, 0.25), 80);
+    // 升调确认音
+    playTones([{f:523, d:0.06}, {f:659, t:0.06, d:0.06}, {f:784, t:0.12, d:0.1}], 'sine', 0.2, 0.25);
+  },
+  combo(n) {
+    if (!Save.d.settings.sfx) return;
+    // 连击：更夸张的尖叫 + 多次爆炸
+    for (let i = 0; i < Math.min(n, 4); i++) {
+      setTimeout(() => turkeyScream(), i * 60);
+    }
+    setTimeout(() => playNoise(0.5, 0.35), 50);
+    // 胜利和弦
+    playTones([
+      {f:523, d:0.08}, {f:659, t:0.08, d:0.08},
+      {f:784, t:0.16, d:0.08}, {f:1047, t:0.24, d:0.15}
+    ], 'sine', 0.25, 0.4);
+  },
+  prop() {
+    if (!Save.d.settings.sfx) return;
+    playTones([{f:800, f2:1200}], 'sine', 0.2, 0.15);
+  },
+  win() {
+    if (!Save.d.settings.sfx) return;
+    // 胜利大曲
+    playTones([
+      {f:523, d:0.12}, {f:659, t:0.15, d:0.12},
+      {f:784, t:0.3, d:0.12}, {f:1047, t:0.45, d:0.25}
+    ], 'sine', 0.3, 0.7);
+    setTimeout(() => playNoise(0.15, 0.15), 600);
+    setTimeout(() => turkeyScream(), 200);
+  },
+  lose() {
+    if (!Save.d.settings.sfx) return;
+    playTones([{f:400, f2:150}], 'sawtooth', 0.2, 0.5);
+  },
+  tick() {
+    if (!Save.d.settings.sfx) return;
+    playTones([{f:1000, f2:800}], 'sine', 0.08, 0.03);
+  },
 
   startBgm() {
     if (!Save.d.settings.bgm) return;
     if (this.bgmAudio) return;
-    // TODO: 替换为实际 BGM 文件路径
+    // TODO: 替换为实际 BGM 文件
   },
-
   stopBgm() {
     if (this.bgmAudio) {
       this.bgmAudio.stop();
@@ -500,7 +633,7 @@ const PARTICLE_TYPES = {
   ring:     { ch: '💫', sz: 20, life: 40, g: 0 },
 };
 
-const POOL_SIZE = 400;
+const POOL_SIZE = 600;
 const pool = [];
 const active = [];
 
@@ -519,7 +652,7 @@ let _shockwaves = [];
 const ScreenFX = {
   shake(intensity = 8) { _screenShake = Math.max(_screenShake, intensity); },
   flash(alpha = 0.6) { _screenFlash = Math.max(_screenFlash, alpha); },
-  shockwave(x, y) { _shockwaves.push({ x, y, r: 0, maxR: 150, alpha: 0.8 }); },
+  shockwave(x, y) { _shockwaves.push({ x, y, r: 0, maxR: 250, alpha: 1.0 }); },
   
   update(ctx, w, h) {
     // Shake
@@ -540,27 +673,38 @@ const ScreenFX = {
       _screenFlash *= 0.8;
     }
     
-    // Shockwaves
+    // 🌊 冲击波特效
     for (let i = _shockwaves.length - 1; i >= 0; i--) {
       const sw = _shockwaves[i];
-      sw.r += 8;
-      sw.alpha *= 0.92;
+      sw.r += 12;
+      sw.alpha *= 0.9;
       if (sw.alpha < 0.02 || sw.r > sw.maxR) {
         _shockwaves.splice(i, 1);
         continue;
       }
       ctx.save();
+      // 外圈金色粗线
       ctx.globalAlpha = sw.alpha;
       ctx.strokeStyle = '#FFD700';
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 5;
+      ctx.shadowColor = '#FFD700';
+      ctx.shadowBlur = 15;
       ctx.beginPath();
       ctx.arc(sw.x, sw.y, sw.r, 0, Math.PI * 2);
       ctx.stroke();
-      // Inner ring
+      // 中圈橙色
+      ctx.shadowBlur = 0;
       ctx.strokeStyle = '#FF6B35';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.arc(sw.x, sw.y, sw.r * 0.7, 0, Math.PI * 2);
+      ctx.stroke();
+      // 内圈白色
+      ctx.globalAlpha = sw.alpha * 0.6;
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(sw.x, sw.y, sw.r * 0.4, 0, Math.PI * 2);
       ctx.stroke();
       ctx.restore();
     }
@@ -574,7 +718,7 @@ const Particles = {
       const p = pool.find(p => !p.on);
       if (!p) break;
       const ang = Math.random() * Math.PI * 2;
-      const spd = 1 + Math.random() * 3;
+      const spd = 2 + Math.random() * 5;
       p.on = true;
       p.x = x; p.y = y;
       p.vx = Math.cos(ang) * spd;
@@ -1548,35 +1692,51 @@ class GameScene extends Scene {
             this._showCombo(combo);
           }
 
-          // 🔥 超强消除特效！
+          // 🔥🔥🔥 超级爆炸消除特效！！！
           const w = Renderer.width;
           const slotTotalW = SLOT_COUNT * (SLOT_W + SLOT_GAP) - SLOT_GAP;
           const slotStartX = (w - slotTotalW) / 2;
           const cx = slotStartX + (i + 1) * (SLOT_W + SLOT_GAP);
           const cy = _slotBarY + SLOT_BAR_H / 2;
           
-          // 大量粒子爆炸
-          Particles.burst(cx, cy, 18);
-          Particles.emit(cx, cy, 'fire', 6);
-          Particles.emit(cx, cy, 'boom', 2);
-          Particles.emit(cx, cy, 'lightning', 4);
-          Particles.emit(cx, cy, 'ring', 3);
-          Particles.emit(cx, cy, 'sparkle', 5);
+          // 超大量粒子从中心爆炸
+          Particles.burst(cx, cy, 30);
+          Particles.emit(cx, cy, 'fire', 12);
+          Particles.emit(cx, cy, 'boom', 5);
+          Particles.emit(cx, cy, 'lightning', 8);
+          Particles.emit(cx, cy, 'ring', 5);
+          Particles.emit(cx, cy, 'sparkle', 10);
+          Particles.emit(cx, cy, 'confetti', 8);
+          Particles.emit(cx, cy, 'heart', 4);
           
-          // 屏幕震动 + 闪光 + 冲击波
-          if (typeof ScreenFX !== 'undefined') {
-            ScreenFX.shake(combo > 2 ? 12 : 8);
-            ScreenFX.flash(combo > 2 ? 0.5 : 0.3);
-            ScreenFX.shockwave(cx, cy);
+          // 多个位置同时爆炸
+          for (let ei = 0; ei < 3; ei++) {
+            const ox = cx + (Math.random() - 0.5) * 120;
+            const oy = cy + (Math.random() - 0.5) * 80;
+            Particles.burst(ox, oy, 10);
+            Particles.emit(ox, oy, 'fire', 4);
           }
           
-          // 连击时追加扩散粒子
+          // 强烈屏幕震动 + 闪光 + 多重冲击波
+          if (typeof ScreenFX !== 'undefined') {
+            ScreenFX.shake(combo > 2 ? 20 : combo > 1 ? 15 : 12);
+            ScreenFX.flash(combo > 2 ? 0.7 : combo > 1 ? 0.5 : 0.4);
+            ScreenFX.shockwave(cx, cy);
+            // 延迟第二波冲击
+            setTimeout(() => {
+              if (typeof ScreenFX !== 'undefined') {
+                ScreenFX.shockwave(cx + (Math.random()-0.5)*60, cy + (Math.random()-0.5)*40);
+              }
+            }, 100);
+          }
+          
+          // 连击时全屏粒子风暴
           if (combo > 1) {
-            for (let ci = 0; ci < combo * 2; ci++) {
-              const rx = cx + (Math.random() - 0.5) * 100;
-              const ry = cy + (Math.random() - 0.5) * 60;
-              Particles.emit(rx, ry, 'star', 1);
-              Particles.emit(rx, ry, 'confetti', 1);
+            for (let ci = 0; ci < combo * 4; ci++) {
+              const rx = Math.random() * w;
+              const ry = cy + (Math.random() - 0.5) * 200;
+              const types = ['star', 'confetti', 'fire', 'lightning', 'heart'];
+              Particles.emit(rx, ry, types[ci % types.length], 1);
             }
           }
 
@@ -2236,43 +2396,138 @@ class ResultScene extends Scene {
   }
 
   _drawWin(ctx, w, px, py, popW, popH) {
-    ctx.font = 'bold 28px sans-serif';
+    const cx = w / 2;
+    // 动态弹入效果
+    const scale = Math.min(1, _animTime * 4);
+    const bounce = scale < 1 ? scale : 1 + Math.sin(_animTime * 3) * 0.02;
+    
+    ctx.save();
+    ctx.translate(cx, py + popH / 2);
+    ctx.scale(bounce, bounce);
+    ctx.translate(-cx, -(py + popH / 2));
+    
+    // 标题 - 大号带光晕
+    ctx.save();
+    ctx.shadowColor = '#FFD700';
+    ctx.shadowBlur = 20;
+    ctx.font = 'bold 32px sans-serif';
     ctx.fillStyle = '#FFD700';
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    ctx.fillText('🎉 过关啦！', w / 2, py + 20);
+    ctx.fillText('🎉 过关啦！🎉', cx, py + 15);
+    ctx.restore();
 
-    const starStr = '⭐'.repeat(_result.stars) + '☆'.repeat(3 - _result.stars);
-    ctx.font = '32px serif';
-    ctx.fillText(starStr, w / 2, py + 65);
+    // 星星 - 大号带动画
+    const starY = py + 60;
+    for (let si = 0; si < 3; si++) {
+      const isFull = si < _result.stars;
+      const starDelay = 0.3 + si * 0.2;
+      const starScale = _animTime > starDelay ? Math.min(1.2, (_animTime - starDelay) * 5) : 0;
+      const finalScale = starScale > 1 ? 1 + (1.2 - starScale) * 0.5 : starScale;
+      if (finalScale <= 0) continue;
+      ctx.save();
+      const sx = cx - 50 + si * 50;
+      ctx.translate(sx, starY + 15);
+      ctx.scale(finalScale, finalScale);
+      ctx.font = '36px serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      if (isFull) {
+        ctx.shadowColor = '#FFD700';
+        ctx.shadowBlur = 10;
+      }
+      ctx.fillText(isFull ? '⭐' : '☆', 0, 0);
+      ctx.restore();
+    }
 
-    ctx.font = 'bold 20px sans-serif';
+    // 分数 - 超大醒目
+    ctx.save();
+    ctx.font = 'bold 48px sans-serif';
     ctx.fillStyle = '#FFFFFF';
-    ctx.fillText('得分：' + _result.score, w / 2, py + 120);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.shadowColor = 'rgba(255,255,255,0.5)';
+    ctx.shadowBlur = 10;
+    ctx.fillText('' + _result.score, cx, py + 105);
+    ctx.restore();
+    
+    // "分" 标签
+    ctx.font = '16px sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    ctx.fillText('得 分', cx, py + 155);
 
+    // 火鸡卡片 - 带发光边框
     const cardId = Math.min(_result.levelId - 1, 9);
     const turkey = TURKEY_TYPES[cardId];
     if (turkey) {
-      ctx.font = '16px sans-serif';
+      ctx.save();
+      ctx.shadowColor = '#FFD700';
+      ctx.shadowBlur = 8;
+      ctx.font = 'bold 16px sans-serif';
       ctx.fillStyle = '#FFD700';
-      ctx.fillText('🃏 获得：' + turkey.name, w / 2, py + 160);
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      ctx.fillText('🏆 获得图鉴：' + turkey.name, cx, py + 185);
+      ctx.restore();
     }
+    
+    ctx.restore(); // bounce scale
   }
 
   _drawLose(ctx, w, px, py, popW, popH) {
-    ctx.font = 'bold 28px sans-serif';
+    const cx = w / 2;
+    const scale = Math.min(1, _animTime * 4);
+    
+    ctx.save();
+    ctx.translate(cx, py + popH / 2);
+    ctx.scale(scale, scale);
+    ctx.translate(-cx, -(py + popH / 2));
+    
+    // 标题
+    ctx.save();
+    ctx.shadowColor = '#FF5252';
+    ctx.shadowBlur = 15;
+    ctx.font = 'bold 32px sans-serif';
     ctx.fillStyle = '#FF5252';
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    ctx.fillText('😢 挑战失败', w / 2, py + 20);
+    ctx.fillText('😢 挑战失败', cx, py + 20);
+    ctx.restore();
 
-    ctx.font = '16px sans-serif';
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillText(_result.reason || '', w / 2, py + 70);
-
-    if (_result.removed !== undefined) {
-      ctx.font = '14px sans-serif';
-      ctx.fillStyle = 'rgba(255,255,255,0.7)';
-      ctx.fillText('已消除：' + _result.removed + ' / ' + _result.total, w / 2, py + 110);
+    // 原因
+    if (_result.reason) {
+      ctx.font = 'bold 18px sans-serif';
+      ctx.fillStyle = '#FFAB91';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      ctx.fillText(_result.reason, cx, py + 70);
     }
+
+    // 进度条
+    if (_result.removed !== undefined && _result.total) {
+      const barW = popW * 0.6;
+      const barH = 20;
+      const barX = cx - barW / 2;
+      const barY = py + 110;
+      const pct = _result.removed / _result.total;
+      
+      // 背景
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      ctx.beginPath();
+      ctx.roundRect(barX, barY, barW, barH, 10);
+      ctx.fill();
+      // 进度
+      ctx.fillStyle = pct > 0.7 ? '#FFB300' : pct > 0.4 ? '#FF7043' : '#EF5350';
+      ctx.beginPath();
+      ctx.roundRect(barX, barY, barW * pct, barH, 10);
+      ctx.fill();
+      // 文字
+      ctx.font = 'bold 14px sans-serif';
+      ctx.fillStyle = '#FFFFFF';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(_result.removed + ' / ' + _result.total, cx, barY + barH / 2);
+      
+      ctx.font = '13px sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.fillText('再接再厉，差一点就成功了！', cx, barY + barH + 20);
+    }
+    
+    ctx.restore();
   }
 
   onTouchStart(x, y) {
