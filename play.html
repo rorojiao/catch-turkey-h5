@@ -15,31 +15,6 @@
 </head>
 <body>
   <canvas id="gameCanvas"></canvas>
-  <script>
-    // 在bundle加载前强制设canvas全屏（使用100vw/vh + 多种尺寸源）
-    (function(){
-      var c = document.getElementById('gameCanvas');
-      function setSize() {
-        var w = Math.max(window.innerWidth||0, document.documentElement.clientWidth||0, screen.width||375);
-        var h = Math.max(window.innerHeight||0, document.documentElement.clientHeight||0, screen.height||667);
-        if (window.visualViewport) {
-          w = Math.max(w, window.visualViewport.width||0);
-          h = Math.max(h, window.visualViewport.height||0);
-        }
-        w = Math.floor(w); h = Math.floor(h);
-        var dpr = window.devicePixelRatio || 1;
-        c.style.width = w + 'px';
-        c.style.height = h + 'px';
-        c.width = w * dpr;
-        c.height = h * dpr;
-      }
-      setSize();
-      // TG WebView可能延迟报告尺寸，持续重试
-      for (var i = 1; i <= 20; i++) setTimeout(setSize, i * 100);
-      window.addEventListener('resize', setSize);
-      if (window.visualViewport) window.visualViewport.addEventListener('resize', setSize);
-    })();
-  </script>
-  <script src="bundle-1771392772.js"></script>
+  <script src="bundle-1771401680.js"></script>
 </body>
 </html>

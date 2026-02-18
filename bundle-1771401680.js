@@ -66,13 +66,18 @@
 
     _syncFrame: function(Renderer) {
       var sz = syncCanvasSize();
+      var dpr = window.devicePixelRatio || 1;
+      // Always ensure transform is correct (canvas.width changes reset it)
+      var t = Renderer.ctx.getTransform();
+      if (t.a !== dpr || t.d !== dpr) {
+        Renderer.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
       if (Renderer.width !== sz.w || Renderer.height !== sz.h) {
-        var dpr = window.devicePixelRatio || 1;
         Renderer.width = sz.w;
         Renderer.height = sz.h;
         Renderer.scale = sz.w / 375;
         Renderer.dpr = dpr;
-        Renderer.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        Renderer._resized = true;
       }
     },
 
@@ -863,6 +868,7 @@ const SceneManager = {
       return;
     }
     this._stack.push(scene);
+    scene._lastParams = params || {};
     scene.enter(params);
     this._bindTouch();
   },
@@ -887,6 +893,11 @@ const SceneManager = {
     if (!this._running) return;
 
     if (typeof wx !== "undefined" && wx._syncFrame) wx._syncFrame(Renderer);
+    if (Renderer._resized) {
+      Renderer._resized = false;
+      const cs = this.current();
+      if (cs && cs.enter) cs.enter(cs._lastParams || {});
+    }
 
     const now = Date.now();
     const dt = (now - this._lastTime) / 1000;
