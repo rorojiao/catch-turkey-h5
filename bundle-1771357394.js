@@ -1118,6 +1118,7 @@ let timerInterval = null;
 let gameOver = false;
 let paused = false;
 let animating = false;
+let _matchAnimating = false;
 let totalRemoved = 0;
 let totalTurkeys = 0;
 let theme = null;
@@ -1135,7 +1136,8 @@ let countdownAlpha = 0;
 let _countdownCb = null;
 
 // 飞行动画
-let flyingTurkey = null; // {typeId, x, y, startX, startY, endX, endY, t, dur, cpx, cpy}
+let flyingTurkey = null; // legacy single ref (kept for compat)
+let flyingTurkeys = []; // support multiple simultaneous flying turkeys
 
 // HUD布局
 let _hudY = 0;
@@ -1189,6 +1191,8 @@ class GameScene extends Scene {
     turkeys = [];
     scoreFloats = [];
     flyingTurkey = null;
+    flyingTurkeys = [];
+    _matchAnimating = false;
     comboText = '';
     comboAlpha = 0;
     props = {
@@ -1400,7 +1404,7 @@ class GameScene extends Scene {
 
   // ========== 火鸡点击 ==========
   _onTurkeyClick(turkey) {
-    if (paused || gameOver || animating || turkey.removed) return;
+    if (paused || gameOver || _matchAnimating || turkey.removed) return;
 
     // 被遮挡的火鸡不能点
     if (turkey.blocked) {
@@ -1451,6 +1455,7 @@ class GameScene extends Scene {
       cpx, cpy,
       t: 0, dur: 0.4,
     };
+    flyingTurkeys.push(flyingTurkey);
     animating = true;
 
     // 发射粒子
@@ -1465,6 +1470,7 @@ class GameScene extends Scene {
       if (slots[i].typeId === slots[i + 1].typeId && slots[i + 1].typeId === slots[i + 2].typeId) {
         const typeId = slots[i].typeId;
         animating = true;
+        _matchAnimating = true;
 
         setTimeout(() => {
           Snd.match();
@@ -1504,7 +1510,7 @@ class GameScene extends Scene {
             wx.vibrateShort({ type: combo > 2 ? 'heavy' : 'medium' });
           }
 
-          animating = false;
+          animating = false; _matchAnimating = false;
 
           // 判定胜利
           if (totalRemoved >= totalTurkeys) {
@@ -1686,27 +1692,26 @@ class GameScene extends Scene {
       // 不在这里做淡出，由回调控制
     }
 
-    // 飞行动画
-    if (flyingTurkey) {
-      flyingTurkey.t += dt;
-      const progress = Math.min(flyingTurkey.t / flyingTurkey.dur, 1);
-      // 缓动
+    // 飞行动画 (支持多个同时飞行)
+    for (let fi = flyingTurkeys.length - 1; fi >= 0; fi--) {
+      const ft = flyingTurkeys[fi];
+      ft.t += dt;
+      const progress = Math.min(ft.t / ft.dur, 1);
       const ease = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2;
-      // 贝塞尔曲线
-      const { startX, startY, endX, endY, cpx, cpy } = flyingTurkey;
-      flyingTurkey.x = (1 - ease) * (1 - ease) * startX + 2 * (1 - ease) * ease * cpx + ease * ease * endX;
-      flyingTurkey.y = (1 - ease) * (1 - ease) * startY + 2 * (1 - ease) * ease * cpy + ease * ease * endY;
+      const { startX, startY, endX, endY, cpx, cpy } = ft;
+      ft.x = (1 - ease) * (1 - ease) * startX + 2 * (1 - ease) * ease * cpx + ease * ease * endX;
+      ft.y = (1 - ease) * (1 - ease) * startY + 2 * (1 - ease) * ease * cpy + ease * ease * endY;
 
       if (progress >= 1) {
         Snd.drop();
-        flyingTurkey = null;
-        animating = false;
+        flyingTurkeys.splice(fi, 1);
 
         // 检查匹配
         const matched = this._checkMatch();
-        if (!matched) animating = false;
+        if (!matched && flyingTurkeys.length === 0) animating = false;
       }
     }
+    flyingTurkey = flyingTurkeys.length > 0 ? flyingTurkeys[flyingTurkeys.length - 1] : null;
 
     // 粒子在 render 中绘制
   }
@@ -1719,10 +1724,10 @@ class GameScene extends Scene {
     // 火鸡
     this._drawTurkeys(ctx);
 
-    // 飞行中的火鸡
-    if (flyingTurkey) {
-      this._drawSingleTurkey(ctx, flyingTurkey.typeId,
-        flyingTurkey.x - TURKEY_W / 2, flyingTurkey.y - TURKEY_H / 2, 1);
+    // 飞行中的火鸡（支持多个）
+    for (const ft of flyingTurkeys) {
+      this._drawSingleTurkey(ctx, ft.typeId,
+        ft.x - TURKEY_W / 2, ft.y - TURKEY_H / 2, 1);
     }
 
     // HUD
