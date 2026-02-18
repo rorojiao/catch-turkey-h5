@@ -9,21 +9,16 @@
   }
 
   function getBestSize() {
-    var candidates = [
-      [window.innerWidth || 0, window.innerHeight || 0],
-      [document.documentElement.clientWidth || 0, document.documentElement.clientHeight || 0],
-    ];
-    if (window.visualViewport) {
-      candidates.unshift([window.visualViewport.width || 0, window.visualViewport.height || 0]);
-    }
-    if (document.body) {
-      candidates.push([document.body.clientWidth || 0, document.body.clientHeight || 0]);
-    }
+    // Priority: visualViewport > innerSize > clientSize > screen (fallback only)
     var w = 0, h = 0;
-    for (var i = 0; i < candidates.length; i++) {
-      if (candidates[i][0] > w) w = candidates[i][0];
-      if (candidates[i][1] > h) h = candidates[i][1];
+    if (window.visualViewport && window.visualViewport.width > 0) {
+      w = window.visualViewport.width;
+      h = window.visualViewport.height;
     }
+    if (!w) w = window.innerWidth || document.documentElement.clientWidth || 0;
+    if (!h) h = window.innerHeight || document.documentElement.clientHeight || 0;
+    if (!w && document.body) w = document.body.clientWidth || 0;
+    if (!h && document.body) h = document.body.clientHeight || 0;
     if (w < 200) w = screen.width || 375;
     if (h < 200) h = screen.height || 667;
     return { w: Math.floor(w), h: Math.floor(h) };
