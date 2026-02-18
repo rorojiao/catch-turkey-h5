@@ -14,20 +14,21 @@
   }
 
   function getCanvasSize() {
-    var c = getCanvas();
-    var rect = c.getBoundingClientRect();
-    // Use CSS size if available, fallback to window
-    var w = rect.width > 0 ? rect.width : window.innerWidth;
-    var h = rect.height > 0 ? rect.height : window.innerHeight;
+    var w = window.innerWidth || document.documentElement.clientWidth || 375;
+    var h = window.innerHeight || document.documentElement.clientHeight || 667;
     return { w: w, h: h };
   }
 
   function resizeCanvas() {
     var c = getCanvas();
     var dpr = window.devicePixelRatio || 1;
-    var sz = getCanvasSize();
-    c.width = sz.w * dpr;
-    c.height = sz.h * dpr;
+    // Force layout recalc
+    var w = window.innerWidth || document.documentElement.clientWidth || 375;
+    var h = window.innerHeight || document.documentElement.clientHeight || 667;
+    c.style.width = w + 'px';
+    c.style.height = h + 'px';
+    c.width = w * dpr;
+    c.height = h * dpr;
   }
 
   window.wx = {
@@ -37,6 +38,8 @@
         _canvasCreated = true;
         // Delay slightly to ensure CSS layout is applied
         setTimeout(function() { resizeCanvas(); }, 0);
+        setTimeout(function() { resizeCanvas(); }, 100);
+        setTimeout(function() { resizeCanvas(); }, 500);
         resizeCanvas();
         window.addEventListener('resize', function() { setTimeout(resizeCanvas, 50); });
       }
@@ -295,9 +298,27 @@ const Renderer = {
   },
 
   clear() {
-    ctx.clearRect(0, 0, windowWidth, windowHeight);
+    ctx.clearRect(0, 0, this.width, this.height);
   },
 };
+
+// 监听窗口大小变化，更新Renderer尺寸
+window.addEventListener('resize', function() {
+  setTimeout(function() {
+    var w = window.innerWidth || document.documentElement.clientWidth || 375;
+    var h = window.innerHeight || document.documentElement.clientHeight || 667;
+    var dpr = window.devicePixelRatio || 1;
+    Renderer.width = w;
+    Renderer.height = h;
+    Renderer.scale = w / 375;
+    Renderer.dpr = dpr;
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.scale(dpr, dpr);
+  }, 100);
+});
 
 /* ========== 触摸事件管理 ========== */
 const _touchHandlers = [];
