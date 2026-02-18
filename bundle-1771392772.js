@@ -1,34 +1,45 @@
 // ===== wx-adapter.js =====
 (function() {
-  var _touchStartCbs = [];
-  var _touchMoveCbs = [];
-  var _touchEndCbs = [];
   var _canvasCreated = false;
   var _mainCanvas = null;
 
   function getCanvas() {
-    if (!_mainCanvas) {
-      _mainCanvas = document.getElementById('gameCanvas');
-    }
+    if (!_mainCanvas) _mainCanvas = document.getElementById('gameCanvas');
     return _mainCanvas;
   }
 
-  function getCanvasSize() {
-    var w = window.innerWidth || document.documentElement.clientWidth || 375;
-    var h = window.innerHeight || document.documentElement.clientHeight || 667;
-    return { w: w, h: h };
+  function getBestSize() {
+    var candidates = [
+      [window.innerWidth || 0, window.innerHeight || 0],
+      [document.documentElement.clientWidth || 0, document.documentElement.clientHeight || 0],
+    ];
+    if (window.visualViewport) {
+      candidates.unshift([window.visualViewport.width || 0, window.visualViewport.height || 0]);
+    }
+    if (document.body) {
+      candidates.push([document.body.clientWidth || 0, document.body.clientHeight || 0]);
+    }
+    var w = 0, h = 0;
+    for (var i = 0; i < candidates.length; i++) {
+      if (candidates[i][0] > w) w = candidates[i][0];
+      if (candidates[i][1] > h) h = candidates[i][1];
+    }
+    if (w < 200) w = screen.width || 375;
+    if (h < 200) h = screen.height || 667;
+    return { w: Math.floor(w), h: Math.floor(h) };
   }
 
-  function resizeCanvas() {
+  function syncCanvasSize() {
     var c = getCanvas();
     var dpr = window.devicePixelRatio || 1;
-    // Force layout recalc
-    var w = window.innerWidth || document.documentElement.clientWidth || 375;
-    var h = window.innerHeight || document.documentElement.clientHeight || 667;
-    c.style.width = w + 'px';
-    c.style.height = h + 'px';
-    c.width = w * dpr;
-    c.height = h * dpr;
+    var sz = getBestSize();
+    if (c._lw === sz.w && c._lh === sz.h) return sz;
+    c._lw = sz.w; c._lh = sz.h;
+    c.style.width = sz.w + 'px';
+    c.style.height = sz.h + 'px';
+    c.width = sz.w * dpr;
+    c.height = sz.h * dpr;
+    return sz;
   }
 
   window.wx = {
@@ -36,12 +47,12 @@
       var c = getCanvas();
       if (!_canvasCreated) {
         _canvasCreated = true;
-        // Delay slightly to ensure CSS layout is applied
-        setTimeout(function() { resizeCanvas(); }, 0);
-        setTimeout(function() { resizeCanvas(); }, 100);
-        setTimeout(function() { resizeCanvas(); }, 500);
-        resizeCanvas();
-        window.addEventListener('resize', function() { setTimeout(resizeCanvas, 50); });
+        syncCanvasSize();
+        for (var d = 1; d <= 10; d++) setTimeout(syncCanvasSize, d * 200);
+        window.addEventListener('resize', function() { syncCanvasSize(); });
+        if (window.visualViewport) {
+          window.visualViewport.addEventListener('resize', function() { syncCanvasSize(); });
+        }
       }
       c.createImage = function() { return new Image(); };
       c.requestAnimationFrame = window.requestAnimationFrame.bind(window);
@@ -49,90 +60,70 @@
     },
 
     getSystemInfoSync: function() {
-      var sz = getCanvasSize();
-      return {
-        windowWidth: sz.w,
-        windowHeight: sz.h,
-        pixelRatio: window.devicePixelRatio || 1,
-      };
+      var sz = getBestSize();
+      return { windowWidth: sz.w, windowHeight: sz.h, pixelRatio: window.devicePixelRatio || 1 };
+    },
+
+    _syncFrame: function(Renderer) {
+      var sz = syncCanvasSize();
+      if (Renderer.width !== sz.w || Renderer.height !== sz.h) {
+        var dpr = window.devicePixelRatio || 1;
+        Renderer.width = sz.w;
+        Renderer.height = sz.h;
+        Renderer.scale = sz.w / 375;
+        Renderer.dpr = dpr;
+        Renderer.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
     },
 
     onTouchStart: function(cb) {
-      _touchStartCbs.push(cb);
-      document.addEventListener('touchstart', function(e) {
-        e.preventDefault();
+      function handle(e) {
         var r = getCanvas().getBoundingClientRect();
-        cb({ touches: Array.from(e.touches).map(function(t) { return { clientX: t.clientX - r.left, clientY: t.clientY - r.top }; }) });
-      }, { passive: false });
-      document.addEventListener('mousedown', function(e) {
-        var r = getCanvas().getBoundingClientRect();
-        cb({ touches: [{ clientX: e.clientX - r.left, clientY: e.clientY - r.top }] });
-      });
+        var ts = e.touches ? Array.from(e.touches) : [e];
+        cb({ touches: ts.map(function(t) { return { clientX: t.clientX - r.left, clientY: t.clientY - r.top }; }) });
+      }
+      document.addEventListener('touchstart', function(e) { e.preventDefault(); handle(e); }, { passive: false });
+      document.addEventListener('mousedown', handle);
     },
 
     onTouchMove: function(cb) {
-      _touchMoveCbs.push(cb);
-      document.addEventListener('touchmove', function(e) {
-        e.preventDefault();
+      function handle(e) {
         var r = getCanvas().getBoundingClientRect();
-        cb({ touches: Array.from(e.touches).map(function(t) { return { clientX: t.clientX - r.left, clientY: t.clientY - r.top }; }) });
-      }, { passive: false });
-      document.addEventListener('mousemove', function(e) {
-        if (e.buttons > 0) {
-          var r = getCanvas().getBoundingClientRect();
-          cb({ touches: [{ clientX: e.clientX - r.left, clientY: e.clientY - r.top }] });
-        }
-      });
+        var ts = e.touches ? Array.from(e.touches) : (e.buttons > 0 ? [e] : []);
+        if (ts.length) cb({ touches: ts.map(function(t) { return { clientX: t.clientX - r.left, clientY: t.clientY - r.top }; }) });
+      }
+      document.addEventListener('touchmove', function(e) { e.preventDefault(); handle(e); }, { passive: false });
+      document.addEventListener('mousemove', handle);
     },
 
     onTouchEnd: function(cb) {
-      _touchEndCbs.push(cb);
-      document.addEventListener('touchend', function(e) {
-        e.preventDefault();
+      function handle(e) {
         var r = getCanvas().getBoundingClientRect();
-        cb({ changedTouches: Array.from(e.changedTouches).map(function(t) { return { clientX: t.clientX - r.left, clientY: t.clientY - r.top }; }) });
-      }, { passive: false });
-      document.addEventListener('mouseup', function(e) {
-        var r = getCanvas().getBoundingClientRect();
-        cb({ changedTouches: [{ clientX: e.clientX - r.left, clientY: e.clientY - r.top }] });
-      });
+        var ts = e.changedTouches ? Array.from(e.changedTouches) : [e];
+        cb({ changedTouches: ts.map(function(t) { return { clientX: t.clientX - r.left, clientY: t.clientY - r.top }; }) });
+      }
+      document.addEventListener('touchend', function(e) { e.preventDefault(); handle(e); }, { passive: false });
+      document.addEventListener('mouseup', handle);
     },
 
     getStorageSync: function(key) {
-      try {
-        var val = localStorage.getItem(key);
-        if (val === null) return '';
-        try { return JSON.parse(val); } catch(e) { return val; }
-      } catch(e) { return ''; }
+      try { var v = localStorage.getItem(key); if (v === null) return ''; try { return JSON.parse(v); } catch(e) { return v; } } catch(e) { return ''; }
     },
-
     setStorageSync: function(key, val) {
-      try {
-        localStorage.setItem(key, typeof val === 'string' ? val : JSON.stringify(val));
-      } catch(e) {}
+      try { localStorage.setItem(key, typeof val === 'string' ? val : JSON.stringify(val)); } catch(e) {}
     },
-
     createInnerAudioContext: function() {
       var audio = new Audio();
       return {
-        set src(v) { audio.src = v; },
-        get src() { return audio.src; },
-        set loop(v) { audio.loop = v; },
-        set volume(v) { audio.volume = v; },
+        set src(v) { audio.src = v; }, get src() { return audio.src; },
+        set loop(v) { audio.loop = v; }, set volume(v) { audio.volume = v; },
         play: function() { try { audio.play(); } catch(e) {} },
         pause: function() { audio.pause(); },
         stop: function() { audio.pause(); audio.currentTime = 0; },
         destroy: function() { audio.src = ''; },
       };
     },
-
-    vibrateShort: function(opts) {
-      if (navigator.vibrate) navigator.vibrate(15);
-    },
-
-    vibrateLong: function(opts) {
-      if (navigator.vibrate) navigator.vibrate(400);
-    },
+    vibrateShort: function() { if (navigator.vibrate) navigator.vibrate(15); },
   };
 })();
 
@@ -302,23 +293,7 @@ const Renderer = {
   },
 };
 
-// 监听窗口大小变化，更新Renderer尺寸
-window.addEventListener('resize', function() {
-  setTimeout(function() {
-    var w = window.innerWidth || document.documentElement.clientWidth || 375;
-    var h = window.innerHeight || document.documentElement.clientHeight || 667;
-    var dpr = window.devicePixelRatio || 1;
-    Renderer.width = w;
-    Renderer.height = h;
-    Renderer.scale = w / 375;
-    Renderer.dpr = dpr;
-    canvas.style.width = w + 'px';
-    canvas.style.height = h + 'px';
-    canvas.width = w * dpr;
-    canvas.height = h * dpr;
-    ctx.scale(dpr, dpr);
-  }, 100);
-});
+// resize: handled by wx._syncFrame()
 
 /* ========== 触摸事件管理 ========== */
 const _touchHandlers = [];
@@ -910,6 +885,8 @@ const SceneManager = {
 
   _loop() {
     if (!this._running) return;
+
+    if (typeof wx !== "undefined" && wx._syncFrame) wx._syncFrame(Renderer);
 
     const now = Date.now();
     const dt = (now - this._lastTime) / 1000;

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html style="width:100%;height:100%;margin:0;padding:0;overflow:hidden;background:#000">
 <head>
   <meta charset="utf-8">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
@@ -9,23 +9,37 @@
   <title>抓火鸡 🦃</title>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
-    html,body { width:100%; height:100%; overflow:hidden; background:#000; position:fixed; top:0; left:0; right:0; bottom:0; }
-    canvas { display:block; touch-action:none; position:absolute; top:0; left:0; }
+    body { width:100vw; height:100vh; overflow:hidden; background:#000; position:fixed; top:0; left:0; }
+    #gameCanvas { display:block; touch-action:none; position:absolute; top:0; left:0; width:100vw !important; height:100vh !important; }
   </style>
 </head>
 <body>
   <canvas id="gameCanvas"></canvas>
   <script>
+    // 在bundle加载前强制设canvas全屏（使用100vw/vh + 多种尺寸源）
     (function(){
       var c = document.getElementById('gameCanvas');
-      var w = window.innerWidth || document.documentElement.clientWidth || screen.width;
-      var h = window.innerHeight || document.documentElement.clientHeight || screen.height;
-      c.style.width = w + 'px';
-      c.style.height = h + 'px';
-      c.width = w * (window.devicePixelRatio || 1);
-      c.height = h * (window.devicePixelRatio || 1);
+      function setSize() {
+        var w = Math.max(window.innerWidth||0, document.documentElement.clientWidth||0, screen.width||375);
+        var h = Math.max(window.innerHeight||0, document.documentElement.clientHeight||0, screen.height||667);
+        if (window.visualViewport) {
+          w = Math.max(w, window.visualViewport.width||0);
+          h = Math.max(h, window.visualViewport.height||0);
+        }
+        w = Math.floor(w); h = Math.floor(h);
+        var dpr = window.devicePixelRatio || 1;
+        c.style.width = w + 'px';
+        c.style.height = h + 'px';
+        c.width = w * dpr;
+        c.height = h * dpr;
+      }
+      setSize();
+      // TG WebView可能延迟报告尺寸，持续重试
+      for (var i = 1; i <= 20; i++) setTimeout(setSize, i * 100);
+      window.addEventListener('resize', setSize);
+      if (window.visualViewport) window.visualViewport.addEventListener('resize', setSize);
     })();
   </script>
-  <script src="bundle-1771383730.js"></script>
+  <script src="bundle-1771392772.js"></script>
 </body>
 </html>
